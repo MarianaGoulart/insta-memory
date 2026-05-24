@@ -80,7 +80,8 @@ jobs:
                           time.sleep(5)
 
                   if not downloaded:
-                      send_telegram("Couldn't download this one. Check if it's private or try again later.")
+                      stderr_tail = result.stderr.decode(errors="replace")[-300:]
+                      send_telegram(f"Download failed. yt-dlp said:\n{stderr_tail}")
                       sys.exit(0)
 
                   audio_files = list(Path(tmpdir).glob("audio.*"))
@@ -144,7 +145,7 @@ jobs:
 
                   send_telegram(f"Saved: {filename}")
 
-              except Exception:
+              except Exception as exc:
                   traceback.print_exc()
-                  send_telegram("Something went wrong. Try again, or check if the link is public.")
+                  send_telegram(f"Error: {type(exc).__name__}: {str(exc)[:300]}")
           PYEOF
