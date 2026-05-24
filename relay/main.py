@@ -18,7 +18,8 @@ _INSTAGRAM_RE = re.compile(
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("telegram.ext._updater").setLevel(logging.CRITICAL)
+for _noisy in ("telegram.ext._updater", "telegram.ext._application", "telegram.ext"):
+    logging.getLogger(_noisy).setLevel(logging.CRITICAL)
 logger = logging.getLogger(__name__)
 
 
