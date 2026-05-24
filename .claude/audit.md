@@ -49,9 +49,9 @@ Claude Code should verify every item in this checklist before the build is consi
 The workflow file must include an explicit permissions block at the top:
 ```yaml
 permissions:
-  contents: write
+  contents: read
 ```
-Nothing else. Do not use the default broad permissions.
+Nothing else. The workflow checks out code but no longer commits anything — `write` is not needed.
 
 **3.2 PAT scope is the minimum needed**
 - The `GH_PAT` used by Railway only needs to trigger `repository_dispatch` and push commits to one repo
@@ -86,15 +86,11 @@ Nothing else. Do not use the default broad permissions.
 
 **5.1 Temp audio files are deleted after transcription**
 - `yt-dlp` downloads audio to a temp file — this must be explicitly deleted after Whisper finishes, whether transcription succeeds or fails
-- Use a `try/finally` block to guarantee cleanup
+- Use `tempfile.TemporaryDirectory` as a context manager to guarantee cleanup on success, failure, and exception
 
-**5.2 No path traversal in filenames**
-- The output `.md` filename is derived from the current UTC timestamp — not from any user input
-- Verify: no part of the Instagram URL is used in the filename
-
-**5.3 `captures/` commits are clean**
-- Only `.md` files should ever be committed to `captures/`
-- Audio files, temp files, and logs must not end up in the repo
+**5.2 No user input in file paths**
+- The temp directory is system-generated — no part of the Instagram URL may appear in any file path or filename
+- Verify: `yt-dlp` output path uses only a static template (e.g. `audio.%(ext)s`) inside the temp dir
 
 ---
 
@@ -109,8 +105,9 @@ Nothing else. Do not use the default broad permissions.
 - Private content, deleted videos, and rate limits all cause `yt-dlp` to exit non-zero
 - The workflow must catch this, retry 3 times with a 5-second delay, then send a Telegram message if all attempts fail — it must not leave the workflow in a failed state with no user notification
 
-**6.3 Empty repo edge case**
-- If `captures/` is empty or doesn't exist yet, the Cowork sync task must handle it gracefully — not crash
+**6.3 SendGrid errors surface correctly**
+- If the SendGrid API call fails (4xx/5xx), `raise_for_status()` must propagate the exception into the outer `except` block
+- The outer `except` must send a Telegram message with a meaningful error snippet — not silently swallow it
 
 ---
 
