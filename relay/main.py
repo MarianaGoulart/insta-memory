@@ -18,6 +18,7 @@ _INSTAGRAM_RE = re.compile(
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext._updater").setLevel(logging.CRITICAL)
 logger = logging.getLogger(__name__)
 
 
