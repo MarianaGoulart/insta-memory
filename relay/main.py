@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     if chat_id != TELEGRAM_CHAT_ID:
+        logger.warning("Ignored message from chat_id %d (expected %d)", chat_id, TELEGRAM_CHAT_ID)
         return
 
     text = update.message.text or ""
@@ -50,6 +51,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 def main() -> None:
+    logger.info("Bot starting. Whitelisted chat_id: %d", TELEGRAM_CHAT_ID)
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
