@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y ffmpeg
+
       - name: Install dependencies
         run: |
           pip install -U yt-dlp openai-whisper requests
