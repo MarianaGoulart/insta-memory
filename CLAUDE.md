@@ -2,7 +2,7 @@
 
 ## What this is
 
-A Telegram bot that receives an Instagram Reel link, downloads the audio with `yt-dlp`, transcribes it with OpenAI Whisper, and commits a raw `.md` file to this repo. A separate Cowork scheduled task handles enrichment (title + key points) and moves finished files to the user's local folder.
+A Telegram bot that receives an Instagram Reel link, downloads the audio with `yt-dlp`, transcribes it with OpenAI Whisper, and emails the raw transcript to an inbox.
 
 Solo use. One user. No auth complexity beyond a chat ID whitelist.
 
@@ -17,9 +17,6 @@ Solo use. One user. No auth complexity beyond a chat ID whitelist.
 ├── relay/
 │   ├── main.py                   # Telegram listener — runs on Railway
 │   └── requirements.txt
-├── captures/                     # raw .md files committed by Actions
-├── _state/
-│   └── .last_sync                # UTC timestamp of last Cowork sync
 └── CLAUDE.md
 ```
 
@@ -34,14 +31,9 @@ Solo use. One user. No auth complexity beyond a chat ID whitelist.
                                                               ↓
                                                     Whisper transcribes
                                                               ↓
-                                                    raw .md committed to captures/
+                                                    transcript emailed to inbox
                                                               ↓
                                                     Telegram confirmation sent
-```
-
-Cowork sync (runs separately, twice a week on user's laptop):
-```
-captures/ (raw .md files) → Claude enrichment → 09_Captures/ (finished files)
 ```
 
 ---
@@ -83,60 +75,42 @@ Payload received: `{ "url": "https://www.instagram.com/reel/..." }`
 3. Download audio with `yt-dlp` — audio only, best quality, output to temp file
 4. Transcribe with Whisper `base` model
 5. Validate transcript (see quality checks below)
-6. Write raw `.md` file to `captures/`
-7. Commit and push
-8. Send Telegram confirmation (or error message)
+6. Send email with transcript via SendGrid
+7. Send Telegram confirmation (or error message)
 
-**Quality checks before committing:**
-- Transcript length < 100 characters → skip commit, send Telegram message: "No speech detected in this video. Nothing saved."
+**Quality checks before sending:**
+- Transcript length < 100 characters → skip email, send Telegram message: "No speech detected in this video. Nothing saved."
 - `yt-dlp` fails (private, unavailable, rate-limited) → retry 3 times with 5s delay → if all fail, send Telegram: "Couldn't download this one. Check if it's private or try again later."
 - Whisper `no_speech_prob` average across segments > 0.8 → treat as no speech, same message as above
 
-**Raw `.md` file format:**
-```markdown
----
-captured: 2026-05-24T14:30:22Z
-source: https://www.instagram.com/reel/ABC123/
----
+**Email format:**
+- **Subject**: `[Capture] YYYY-MM-DD HH:MM — <source URL>`
+- **Body** (plain text):
+```
+Captured: 2026-05-24T14:30:22Z
+Source: https://www.instagram.com/reel/ABC123/
 
 [raw transcript text]
 ```
-
-**File naming:** `YYYY-MM-DDThhmmsZ_raw.md` (UTC, derived from capture time)
-Example: `2026-05-24T143022Z_raw.md`
+- **From**: verified SendGrid sender address
+- **To**: `CAPTURE_EMAIL` secret (recipient inbox)
 
 **Secrets required (set in GitHub repo settings):**
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-- `GH_PAT` — needed to push commits (GITHUB_TOKEN has limited permissions for dispatch-triggered workflows)
-
----
-
-## Component 3: `_state/.last_sync`
-
-A single-line file containing the UTC timestamp of the last successful Cowork sync.
-
-```
-2026-05-24T14:30:22Z
-```
-
-**Rules:**
-- Created on first sync with timestamp `1970-01-01T00:00:00Z` (processes everything)
-- Updated only after a fully successful sync run — never mid-run
-- Committed back to the repo by the Cowork sync script after each successful run
-
-The Cowork sync task (built separately in Cowork) uses this to determine which files in `captures/` are new. It parses the timestamp from each filename and skips anything older than or equal to the `.last_sync` value.
+- `SENDGRID_API_KEY` — for sending email via SendGrid REST API
+- `CAPTURE_EMAIL` — recipient address for transcript emails
 
 ---
 
 ## What NOT to build
 
-- No categorisation or sub-folder logic
+- No categorisation or tagging logic
 - No support for non-Instagram URLs in this version
 - No web UI, no database
 - No user management — single chat ID whitelist only
 - No editing or deleting captures via the bot
-- No Claude API calls — enrichment happens in Cowork, not here
+- No Claude API calls in this bot
 
 ---
 
@@ -144,15 +118,14 @@ The Cowork sync task (built separately in Cowork) uses this to determine which f
 
 1. `relay/main.py` + `relay/requirements.txt`
 2. `.github/workflows/transcribe.yml`
-3. `_state/.last_sync` (initial file with epoch timestamp)
-4. Smoke test: send a real Instagram Reel link through Telegram, verify `.md` file appears in `captures/`
+3. Smoke test: send a real Instagram Reel link through Telegram, verify transcript email arrives in the inbox
 
 ---
 
 ## Before making any changes
 
-1. Read [`audit.md`](audit.md) and [`write-tests.md`](write-tests.md) before touching any code.
-2. For any feature change, create a new branch first — never commit feature work directly to `main` or `master`.
+1. Read [`audit.md`](.claude/audit.md) and [`write-tests.md`](.claude/write-tests.md) before touching any code.
+2. For any feature change, create a new branch first — never commit feature work directly to `main`. If it refers to a new feature, use the prefix feat/, if it is a hotfix, use the prefix hotfix/.
 
 ---
 
