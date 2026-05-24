@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yt-dlp openai-whisper requests
+          pip install -U yt-dlp openai-whisper requests
 
       - name: Download, transcribe, and commit
         env:
@@ -29,6 +29,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GH_PAT: ${{ secrets.GH_PAT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          INSTAGRAM_COOKIES: ${{ secrets.INSTAGRAM_COOKIES }}
         run: |
           python3 - << 'PYEOF'
           import os
@@ -60,19 +61,25 @@ jobs:
               except Exception:
                   traceback.print_exc()
 
+          cookies_content = os.environ.get("INSTAGRAM_COOKIES", "").strip()
+
           with tempfile.TemporaryDirectory() as tmpdir:
+              cookies_path = os.path.join(tmpdir, "cookies.txt")
+              if cookies_content:
+                  Path(cookies_path).write_text(cookies_content)
+
               try:
                   # Download audio — retry up to 3 times
                   downloaded = False
                   for attempt in range(3):
-                      result = subprocess.run(
-                          [
-                              "yt-dlp", "-x", "--audio-format", "mp3",
-                              "-o", f"{tmpdir}/audio.%(ext)s",
-                              url,
-                          ],
-                          capture_output=True,
-                      )
+                      cmd = [
+                          "yt-dlp", "-x", "--audio-format", "mp3",
+                          "-o", f"{tmpdir}/audio.%(ext)s",
+                      ]
+                      if cookies_content:
+                          cmd += ["--cookies", cookies_path]
+                      cmd.append(url)
+                      result = subprocess.run(cmd, capture_output=True)
                       if result.returncode == 0:
                           downloaded = True
                           break
