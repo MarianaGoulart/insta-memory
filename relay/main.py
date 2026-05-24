@@ -4,6 +4,7 @@ import re
 import logging
 import requests
 from telegram import Update
+from telegram.error import Conflict
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -16,6 +17,7 @@ _INSTAGRAM_RE = re.compile(
 )
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -50,11 +52,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Something went wrong triggering the workflow. Try again.")
 
 
+async def handle_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if isinstance(context.error, Conflict):
+        logger.debug("Startup conflict — old instance still shutting down, PTB will retry")
+        return
+    logger.exception("Unhandled error", exc_info=context.error)
+
+
 def main() -> None:
     logger.info("Bot starting. Whitelisted chat_id: %d", TELEGRAM_CHAT_ID)
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+    app.add_error_handler(handle_error)
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
