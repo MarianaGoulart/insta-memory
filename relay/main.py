@@ -1,0 +1,59 @@
+import asyncio
+import os
+import re
+import logging
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+
+TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_CHAT_ID = int(os.environ["TELEGRAM_CHAT_ID"])
+GH_PAT = os.environ["GH_PAT"]
+GH_REPO = os.environ["GH_REPO"]
+
+_INSTAGRAM_RE = re.compile(
+    r"https?://(?:www\.)?instagram\.com/(?:reel|p|tv)/[\w-]+/?"
+)
+
+logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    if chat_id != TELEGRAM_CHAT_ID:
+        return
+
+    text = update.message.text or ""
+    match = _INSTAGRAM_RE.search(text)
+    if not match:
+        await update.message.reply_text("That doesn't look like an Instagram link.")
+        return
+
+    url = match.group(0)
+    try:
+        resp = await asyncio.to_thread(
+            requests.post,
+            f"https://api.github.com/repos/{GH_REPO}/dispatches",
+            json={"event_type": "transcribe", "client_payload": {"url": url}},
+            headers={
+                "Authorization": f"token {GH_PAT}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        await update.message.reply_text("Got it, transcribing... I'll confirm when it's saved.")
+    except Exception:
+        logger.exception("Failed to trigger GitHub workflow")
+        await update.message.reply_text("Something went wrong triggering the workflow. Try again.")
+
+
+def main() -> None:
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
