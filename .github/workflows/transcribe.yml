@@ -4,6 +4,9 @@ on:
   repository_dispatch:
     types: [transcribe]
 
+permissions:
+  contents: read
+
 jobs:
   transcribe:
     runs-on: ubuntu-latest
@@ -32,6 +35,7 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import os
+          import re
           import sys
           import time
           import tempfile
@@ -77,6 +81,20 @@ jobs:
               )
               resp.raise_for_status()
 
+          # Re-validate the dispatch payload here — the relay's check is not a
+          # trust boundary, since repository_dispatch can be fired directly by
+          # anyone holding a token. Re-derive a clean URL from the match so no
+          # extra characters (e.g. a leading "-" that yt-dlp would read as an
+          # option) can ride along with the payload.
+          INSTAGRAM_RE = re.compile(
+              r"https?://(?:www\.)?instagram\.com/(?:reel|p|tv)/[\w-]+/?"
+          )
+          match = INSTAGRAM_RE.fullmatch(url.strip())
+          if not match:
+              send_telegram("That doesn't look like an Instagram link. Nothing saved.")
+              sys.exit(0)
+          url = match.group(0)
+
           cookies_content = os.environ.get("INSTAGRAM_COOKIES", "").strip()
 
           with tempfile.TemporaryDirectory() as tmpdir:
@@ -94,7 +112,7 @@ jobs:
                       ]
                       if cookies_content:
                           cmd += ["--cookies", cookies_path]
-                      cmd.append(url)
+                      cmd += ["--", url]
                       result = subprocess.run(cmd, capture_output=True)
                       if result.returncode == 0:
                           downloaded = True
@@ -144,7 +162,7 @@ jobs:
 
                   send_telegram("Transcribed and sent to your inbox.")
 
-              except Exception as exc:
+              except Exception:
                   traceback.print_exc()
-                  send_telegram(f"Error: {type(exc).__name__}: {str(exc)[:300]}")
+                  send_telegram("Something went wrong. Try again, or check if the link is public.")
           PYEOF
